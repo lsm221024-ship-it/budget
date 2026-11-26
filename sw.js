@@ -1,5 +1,5 @@
 // 우리집 가계부 — 앱 설치용 서비스워커 (화면 파일만 저장, 데이터는 항상 새로 받음)
-const CACHE = 'gb-v1';
+const CACHE = 'gb-v3';
 const FILES = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => {

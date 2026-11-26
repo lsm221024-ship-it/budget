@@ -55,8 +55,11 @@ input{font-family:inherit;font-size:16px;color:var(--ink)}
 nav{position:fixed;bottom:0;left:0;right:0;height:70px;background:#fff;border-top:1px solid var(--line);display:flex;justify-content:space-around;align-items:center;padding-bottom:env(safe-area-inset-bottom)}
 nav button{border:0;background:none;color:var(--sub);font-size:11px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-width:64px;min-height:50px}
 nav button.on{color:var(--acc);font-weight:700}
-nav button.plus{width:56px;height:56px;min-width:0;border-radius:28px;background:var(--acc);color:#fff;margin-top:-26px}
+nav button{flex:1}
+nav .plusic{width:26px;height:26px;border-radius:8px;background:var(--acc);color:#fff;display:flex;align-items:center;justify-content:center}
 #loading{position:fixed;inset:0;background:rgba(246,245,241,.75);display:none;align-items:center;justify-content:center;font-size:15px;color:var(--sub);z-index:9}
+#sync{position:fixed;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,transparent,#0F766E,transparent);background-size:200% 100%;animation:sy 1s linear infinite;display:none;z-index:11}
+@keyframes sy{from{background-position:100% 0}to{background-position:-100% 0}}
 #toast{position:fixed;left:50%;bottom:92px;transform:translateX(-50%);background:#1C1C1E;color:#fff;padding:10px 16px;border-radius:20px;font-size:14px;display:none;max-width:90%;z-index:10}
 .empty{text-align:center;color:var(--sub);font-size:14px;padding:24px 0}
 </style>
@@ -67,12 +70,13 @@ nav button.plus{width:56px;height:56px;min-width:0;border-radius:28px;background
   <nav id="nav">
     <button data-v="home"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>홈</button>
     <button data-v="daily"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>일별</button>
-    <button data-v="add" class="plus" aria-label="지출 입력"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+    <button data-v="add"><span class="plusic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></span>입력</button>
     <button data-v="settings"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>설정</button>
   </nav>
 </div>
 <div id="loading">불러오는 중…</div>
 <div id="toast"></div>
+<div id="sync" aria-hidden="true"></div>
 
 <script>
 var TOKEN_KEY = 'gb_token';
@@ -132,18 +136,66 @@ var API_URL = 'https://script.google.com/macros/s/AKfycbx8BbafLdTXaaMOcwY7cfg94G
 function fail(m) {
   m = String(m || '오류가 발생했습니다');
   var k = m.indexOf('AUTH:');
-  if (k >= 0) { setTok(''); S.data = null; renderLogin(m.slice(k + 5)); return; }
+  if (k >= 0) { setTok(''); cacheClear(); S.data = null; S.ym = null; renderLogin(m.slice(k + 5)); return; }
   toast(m.replace(/^(Error|Exception):\s*/, ''));
 }
-function raw(fn, args, ok) {
-  loading(true);
+var syncing = 0;
+function sync(on) { syncing += on ? 1 : -1; $('sync').style.display = syncing > 0 ? 'block' : 'none'; }
+// opt.silent: 화면을 막지 않고 위쪽 얇은 줄로만 표시 / opt.onErr: 실패 시 되돌리기
+function raw(fn, args, ok, opt) {
+  opt = opt || {};
+  if (opt.silent) sync(true); else loading(true);
+  var done = function () { if (opt.silent) sync(false); else loading(false); };
   fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ fn: fn, args: args }) })
     .then(function (r) { return r.json(); })
-    .then(function (res) { loading(false); if (res && res.ok) ok(res.data); else fail(res && res.error); })
-    .catch(function () { loading(false); toast('연결에 실패했습니다. 인터넷 연결이나 주소를 확인해 주세요.'); });
+    .then(function (res) {
+      done();
+      if (res && res.ok) { if (ok) ok(res.data); }
+      else { if (opt.onErr) opt.onErr(); fail(res && res.error); }
+    })
+    .catch(function () { done(); if (opt.onErr) opt.onErr(); toast('연결에 실패했습니다. 인터넷 연결을 확인해 주세요.'); });
 }
-function call(fn, args, ok) { raw(fn, [getTok()].concat(args), ok); }
-function load() { call('loadData', [S.ym], function (res) { S.data = res; S.ym = res.ym; render(); }); }
+function call(fn, args, ok, opt) { raw(fn, [getTok()].concat(args), ok, opt); }
+
+/* 빠른 화면: 기기에 저장해 둔 데이터를 먼저 보여주고, 뒤에서 최신으로 맞춥니다 */
+var CK = 'gb_cache_';
+function cacheGet(ym) { try { var v = localStorage.getItem(CK + ym); return v ? JSON.parse(v) : null; } catch (e) { return null; } }
+function cachePut(d) { try { if (d && d.ym) localStorage.setItem(CK + d.ym, JSON.stringify(d)); } catch (e) {} }
+function cacheClear() { try { Object.keys(localStorage).forEach(function (k) { if (k.indexOf(CK) === 0) localStorage.removeItem(k); }); } catch (e) {} }
+function sortEntries(a) { a.sort(function (x, y) { return x.date === y.date ? (x.time < y.time ? 1 : -1) : (x.date < y.date ? 1 : -1); }); }
+var loadSeq = 0, writes = 0;
+function quiet() { return S.view === 'add' || S.view === 'settings'; } // 입력 중에는 화면을 다시 그리지 않음
+function refresh() {
+  var seq = ++loadSeq, ym = S.ym;
+  call('loadData', [ym], function (res) {
+    cachePut(res);
+    if (seq !== loadSeq || writes > 0 || !S.data || res.ym !== S.ym) return;
+    var changed = JSON.stringify(S.data) !== JSON.stringify(res);
+    S.data = res;
+    if (changed && !quiet()) render();
+  }, { silent: true });
+}
+function load() {
+  if (!S.ym) S.ym = fmtD(new Date()).slice(0, 7);
+  var c = cacheGet(S.ym);
+  if (c) { S.data = c; render(); refresh(); return; }
+  var seq = ++loadSeq;
+  call('loadData', [S.ym], function (res) {
+    cachePut(res);
+    if (seq !== loadSeq) return;
+    S.data = res; S.ym = res.ym; render();
+  });
+}
+// 화면에 먼저 반영한 뒤 뒤에서 저장. 실패하면 되돌립니다.
+function write(fn, args, onOk, rollback) {
+  writes++;
+  cachePut(S.data);
+  call(fn, args, function (res) {
+    writes--; if (onOk) onOk(res); cachePut(S.data); if (!writes) refresh();
+  }, { silent: true, onErr: function () {
+    writes--; if (rollback) rollback(); cachePut(S.data); if (S.data && !quiet()) render(); if (!writes) refresh();
+  } });
+}
 function go(v) { S.view = v; S.form = null; S.edit = null; S.sform = null; render(); }
 function shiftMonth(k) {
   var y = +S.ym.slice(0, 4), m = +S.ym.slice(5, 7) + k;
@@ -154,7 +206,7 @@ function shiftMonth(k) {
 function renderLogin(msg) {
   $('nav').style.display = 'none';
   var v = $('view'); v.innerHTML = '';
-  var pi = el('input', { id: 'pin', type: 'password', inputmode: 'numeric', autocomplete: 'current-password', placeholder: '비밀번호',
+  var pi = el('input', { id: 'pin', type: 'password', autocapitalize: 'off', autocorrect: 'off', spellcheck: 'false', autocomplete: 'current-password', placeholder: '비밀번호',
     style: 'width:100%;height:56px;border:1px solid #E2DFD8;border-radius:14px;padding:0 16px;font-size:20px;text-align:center;background:#fff;letter-spacing:4px' });
   function go2() {
     var p = pi.value.trim();
@@ -177,7 +229,7 @@ function render() {
   var v = $('view'); v.innerHTML = '';
   ({ home: renderHome, daily: renderDaily, add: renderAdd, settings: renderSettings })[S.view](v);
   Array.prototype.forEach.call(document.querySelectorAll('#nav button'), function (b) {
-    b.classList.toggle('on', b.getAttribute('data-v') === S.view && S.view !== 'add');
+    b.classList.toggle('on', b.getAttribute('data-v') === S.view);
   });
   if (S.lastView !== S.view) { window.scrollTo(0, 0); S.lastView = S.view; }
 }
@@ -195,7 +247,7 @@ function monthHeader(right) {
 }
 
 function entryItem(e) {
-  return el('button', { class: 'item', onclick: function () { S.edit = e; S.form = null; S.view = 'add'; render(); } }, [
+  return el('button', { class: 'item', onclick: function () { if (String(e.id).indexOf('tmp_') === 0) { toast('저장 중입니다. 잠시 후 다시 눌러 주세요'); return; } S.edit = e; S.form = null; S.view = 'add'; render(); } }, [
     el('div', { class: 'ic', text: (e.cat || '?').slice(0, 1) }),
     el('div', { style: 'flex:1;min-width:0' }, [
       el('div', { style: 'font-size:15px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis', text: e.memo || e.cat }),
@@ -252,7 +304,7 @@ function renderHome(v) {
     }))
   ]));
 
-  if (!es.length) { v.appendChild(el('div', { class: 'card empty', text: '이번 달 내역이 없습니다. 아래 + 버튼으로 입력해 보세요.' })); return; }
+  if (!es.length) { v.appendChild(el('div', { class: 'card empty', text: '이번 달 내역이 없습니다. 아래 [입력]으로 추가해 보세요.' })); return; }
 
   // 결제수단별
   var pays = groupSum(es, 'pay');
@@ -380,18 +432,35 @@ function renderAdd(v) {
   v.appendChild(el('button', { class: 'btn', onclick: function () {
     if (!(Number(f.amount) > 0)) { toast('금액을 입력해 주세요'); return; }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(f.date)) { toast('날짜를 선택해 주세요'); return; }
-    call('saveEntry', [f, f.date.slice(0, 7)], function (res) {
-      S.data = res; S.ym = res.ym; S.day = null; S.form = null; S.edit = null; S.view = 'daily';
-      toast('저장했습니다'); render();
-    });
+    var target = f.date.slice(0, 7);
+    var payload = { id: f.id, date: f.date, time: f.time, who: f.who, cat: f.cat, pay: f.pay, memo: f.memo, amount: f.amount };
+    var entry = { id: f.id || ('tmp_' + Date.now()), date: f.date, time: f.time, who: f.who, cat: f.cat, pay: f.pay, memo: String(f.memo || '').trim(), amount: Number(f.amount) };
+    if (!f.id && target !== S.ym) {
+      var c = cacheGet(target);
+      if (!c) { // 그 달 데이터가 기기에 없으면 저장 후 불러오기
+        call('saveEntry', [payload], function () { S.ym = target; S.day = null; S.form = null; S.edit = null; S.view = 'daily'; toast('저장했습니다'); load(); });
+        return;
+      }
+      S.ym = target; S.data = c;
+    }
+    var prev = S.data.entries.slice();
+    if (f.id) S.data.entries = S.data.entries.map(function (x) { return x.id === f.id ? entry : x; });
+    else S.data.entries.push(entry);
+    sortEntries(S.data.entries);
+    S.day = null; S.form = null; S.edit = null; S.view = 'daily';
+    toast('저장했습니다'); render();
+    write('saveEntry', [payload], function (res) {
+      if (!f.id && res && res.id) S.data.entries.forEach(function (x) { if (x.id === entry.id) x.id = res.id; });
+    }, function () { S.data.entries = prev; });
   } }, [f.id ? '수정 저장' : '저장하기']));
 
   if (f.id) {
     v.appendChild(el('button', { class: 'btn del', onclick: function () {
       if (!confirm('이 내역을 삭제할까요?')) return;
-      call('deleteEntry', [f.id, S.ym], function (res) {
-        S.data = res; S.form = null; S.edit = null; S.view = 'daily'; toast('삭제했습니다'); render();
-      });
+      var prev = S.data.entries.slice(), id = f.id;
+      S.data.entries = S.data.entries.filter(function (x) { return x.id !== id; });
+      S.form = null; S.edit = null; S.view = 'daily'; toast('삭제했습니다'); render();
+      write('deleteEntry', [id], null, function () { S.data.entries = prev; });
     } }, ['삭제']));
   }
 }
@@ -438,7 +507,12 @@ function renderSettings(v) {
 
   if (owner) {
     v.appendChild(el('button', { class: 'btn', style: 'margin-bottom:12px', onclick: function () {
-      call('saveSettings', [sf, S.ym], function (res) { S.data = res; S.sform = null; toast('설정을 저장했습니다'); render(); });
+      if (!sf.payments.length || !sf.categories.length) { toast('결제수단과 카테고리는 최소 1개씩 있어야 합니다'); return; }
+      var prev = S.data.settings, ns = {};
+      for (var k in prev) ns[k] = prev[k];
+      ns.payments = sf.payments.slice(); ns.categories = sf.categories.slice(); ns.budget = Number(sf.budget) || 0;
+      S.data.settings = ns; S.sform = null; toast('설정을 저장했습니다'); render();
+      write('saveSettings', [{ payments: ns.payments, categories: ns.categories, budget: ns.budget }], null, function () { S.data.settings = prev; });
     } }, ['설정 저장']));
   }
 
@@ -450,7 +524,7 @@ function renderSettings(v) {
   v.appendChild(el('button', { class: 'btn del', onclick: function () {
     if (!confirm('이 기기에서 로그아웃할까요?')) return;
     var t = getTok();
-    raw('logout', [t], function () { setTok(''); S.data = null; renderLogin('로그아웃했습니다'); });
+    raw('logout', [t], function () { setTok(''); cacheClear(); S.data = null; S.ym = null; renderLogin('로그아웃했습니다'); });
   } }, ['이 기기에서 로그아웃']));
 }
 
