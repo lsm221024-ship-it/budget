@@ -221,7 +221,11 @@ function shiftMonth(k) {
   S.ym = y + '-' + pad(m); S.day = null; load();
 }
 
+function warm() { // 서버 미리 깨우기 (실패해도 조용히 넘어감)
+  try { fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ fn: 'ping', args: [] }) }).catch(function () {}); } catch (e) {}
+}
 function renderLogin(msg) {
+  warm();
   $('nav').style.display = 'none';
   var v = $('view'); v.innerHTML = '';
   var pi = el('input', { id: 'pin', type: 'password', autocapitalize: 'off', autocorrect: 'off', spellcheck: 'false', autocomplete: 'current-password', placeholder: '비밀번호',
@@ -229,9 +233,14 @@ function renderLogin(msg) {
   function go2() {
     var p = pi.value.trim();
     if (!p) { toast('비밀번호를 입력해 주세요'); return; }
-    raw('login', [p], function (t) { setTok(t); $('nav').style.display = ''; S.view = 'home'; load(); });
+    if (!S.ym) S.ym = fmtD(new Date()).slice(0, 7);
+    raw('loginData', [p, S.ym], function (r) {
+      setTok(r.token); cachePut(r.data); S.data = r.data; S.ym = r.data.ym; S.view = 'home';
+      $('nav').style.display = ''; render();
+    });
   }
   pi.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') go2(); });
+  pi.addEventListener('focus', function once() { pi.removeEventListener('focus', once); warm(); });
   v.appendChild(el('div', { style: 'min-height:80vh;display:flex;flex-direction:column;justify-content:center;gap:16px;padding:0 8px' }, [
     el('h1', { style: 'text-align:center;font-size:24px', text: '우리집 가계부' }),
     el('p', { class: 'sub', style: 'text-align:center;margin:0', text: msg || '비밀번호를 입력해 주세요' }),
