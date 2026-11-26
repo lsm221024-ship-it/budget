@@ -269,7 +269,7 @@ function entryItem(e) {
     el('div', { class: 'ic', text: (e.cat || '?').slice(0, 1) }),
     el('div', { style: 'flex:1;min-width:0' }, [
       el('div', { style: 'font-size:15px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis', text: e.memo || e.cat }),
-      el('div', { class: 'sub', style: 'font-size:12px', text: [e.cat, e.pay, e.time].filter(Boolean).join(' · ') })
+      el('div', { class: 'sub', style: 'font-size:12px', text: [e.cat, e.pay].filter(Boolean).join(' · ') })
     ]),
     el('div', { style: 'display:flex;flex-direction:column;align-items:flex-end;gap:4px' }, [
       el('span', { style: 'font-size:15px;font-weight:700;white-space:nowrap', text: won(e.amount) }),
@@ -462,9 +462,8 @@ function renderAdd(v) {
   v.appendChild(chipGroup('결제수단', withCur(st.payments, f.pay), 'pay'));
 
   var di = el('input', { type: 'date', value: f.date }); di.addEventListener('change', function () { f.date = di.value; });
-  var ti = el('input', { type: 'time', value: f.time }); ti.addEventListener('change', function () { f.time = ti.value; });
   var mi = el('input', { type: 'text', maxlength: '100', placeholder: '예: 이마트 장보기', value: f.memo }); mi.addEventListener('input', function () { f.memo = mi.value; });
-  v.appendChild(el('div', { class: 'card', style: 'padding:2px 16px' }, [field('날짜', di), field('시간', ti), field('사용처 · 메모', mi)]));
+  v.appendChild(el('div', { class: 'card', style: 'padding:2px 16px' }, [field('날짜', di), field('사용처 · 메모', mi)]));
 
   v.appendChild(el('button', { class: 'btn', onclick: function () {
     if (!(Number(f.amount) > 0)) { toast('금액을 입력해 주세요'); return; }
@@ -542,9 +541,8 @@ function renderMoneyForm(v, f) {
   }
   v.appendChild(chipGroup('누가', st.names, 'who'));
   var di = el('input', { type: 'date', value: f.date }); di.addEventListener('change', function () { f.date = di.value; });
-  var ti = el('input', { type: 'time', value: f.time }); ti.addEventListener('change', function () { f.time = ti.value; });
   var mi = el('input', { type: 'text', maxlength: '100', placeholder: inc ? '예: 11월 급여' : '예: 생활비 이체', value: f.memo || '' }); mi.addEventListener('input', function () { f.memo = mi.value; });
-  v.appendChild(el('div', { class: 'card', style: 'padding:2px 16px' }, [field('날짜', di), field('시간', ti), field('메모', mi)]));
+  v.appendChild(el('div', { class: 'card', style: 'padding:2px 16px' }, [field('날짜', di), field('메모', mi)]));
   v.appendChild(el('button', { class: 'btn', style: inc ? 'background:#1D4ED8' : '', onclick: function () {
     if (!(Number(f.amount) > 0)) { toast('금액을 입력해 주세요'); return; }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(f.date)) { toast('날짜를 선택해 주세요'); return; }
