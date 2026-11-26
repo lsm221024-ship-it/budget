@@ -62,6 +62,13 @@ nav .plusic{width:26px;height:26px;border-radius:8px;background:var(--acc);color
 @keyframes sy{from{background-position:100% 0}to{background-position:-100% 0}}
 #toast{position:fixed;left:50%;bottom:92px;transform:translateX(-50%);background:#1C1C1E;color:#fff;padding:10px 16px;border-radius:20px;font-size:14px;display:none;max-width:90%;z-index:10}
 .empty{text-align:center;color:var(--sub);font-size:14px;padding:24px 0}
+.seg{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;background:#E9E7E1;border-radius:14px;padding:4px;margin-bottom:12px}
+.seg button{min-height:42px;border:0;border-radius:10px;background:transparent;color:#4A4A4F;font-size:15px}
+.seg button.on{background:#fff;color:var(--acc);font-weight:700;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.bankcard{display:block;width:100%;text-align:left;border:0;background:#fff;border-radius:16px;padding:16px;margin-bottom:10px;color:inherit}
+.in{color:#1D4ED8}
+.btn2{display:flex;align-items:center;justify-content:center;min-height:48px;border-radius:14px;font-size:15px;font-weight:700;border:1px solid #D6D3CC;background:#fff;color:var(--ink);width:100%}
+.btn2.pri{background:var(--acc);border-color:var(--acc);color:#fff}
 </style>
 </head>
 <body>
@@ -71,6 +78,7 @@ nav .plusic{width:26px;height:26px;border-radius:8px;background:var(--acc);color
     <button data-v="home"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>홈</button>
     <button data-v="daily"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>일별</button>
     <button data-v="add"><span class="plusic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></span>입력</button>
+    <button data-v="balance"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2" y="6" width="20" height="14" rx="2"/><path d="M2 10h20M6 15h4"/></svg>잔액</button>
     <button data-v="settings"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>설정</button>
   </nav>
 </div>
@@ -123,6 +131,16 @@ function groupSum(es, key) {
 function monthEntries() { return S.data.entries.filter(function (e) { return e.date.slice(0, 7) === S.ym; }); }
 function filtered(es) { return S.filter === '전체' ? es : es.filter(function (e) { return e.who === S.filter; }); }
 function colorOf(name) { return name === S.data.settings.ownerName ? '#0F766E' : '#C2410C'; }
+var CARD_PAY = '카드대금 납부';
+function banks() { return S.data.banks || []; }
+function bank(name) { return banks().filter(function (b) { return b.name === name; })[0]; }
+function adj(name, d) { var b = bank(name); if (b) b.balance += d; }
+function accOf(pay) { var b = banks().filter(function (x) { return (x.link || []).indexOf(pay) >= 0; })[0]; return b ? b.name : ''; }
+function money() { return S.data.money || (S.data.money = []); }
+function monthMoney() { return money().filter(function (m) { return m.date.slice(0, 7) === S.ym; }); }
+function snap() { return JSON.stringify({ e: S.data.entries, b: S.data.banks, m: S.data.money, s: S.data.settings }); }
+function restore(x) { var o = JSON.parse(x); S.data.entries = o.e; S.data.banks = o.b; S.data.money = o.m; S.data.settings = o.s; }
+function signWon(n) { return (n > 0 ? '+' : n < 0 ? '−' : '') + won(Math.abs(n)); }
 
 function loading(on) { $('loading').style.display = on ? 'flex' : 'none'; }
 function toast(m) {
@@ -196,7 +214,7 @@ function write(fn, args, onOk, rollback) {
     writes--; if (rollback) rollback(); cachePut(S.data); if (S.data && !quiet()) render(); if (!writes) refresh();
   } });
 }
-function go(v) { S.view = v; S.form = null; S.edit = null; S.sform = null; render(); }
+function go(v) { S.view = v; S.form = null; S.edit = null; S.sform = null; S.adjOpen = false; S.bankEdit = null; S.back = null; S.addAcc = ''; render(); }
 function shiftMonth(k) {
   var y = +S.ym.slice(0, 4), m = +S.ym.slice(5, 7) + k;
   if (m < 1) { m = 12; y--; } if (m > 12) { m = 1; y++; }
@@ -227,9 +245,9 @@ function render() {
   if (!S.data) return;
   $('nav').style.display = '';
   var v = $('view'); v.innerHTML = '';
-  ({ home: renderHome, daily: renderDaily, add: renderAdd, settings: renderSettings })[S.view](v);
+  ({ home: renderHome, daily: renderDaily, add: renderAdd, settings: renderSettings, balance: renderBalance, account: renderAccount })[S.view](v);
   Array.prototype.forEach.call(document.querySelectorAll('#nav button'), function (b) {
-    b.classList.toggle('on', b.getAttribute('data-v') === S.view);
+    b.classList.toggle('on', b.getAttribute('data-v') === (S.view === 'account' ? 'balance' : S.view));
   });
   if (S.lastView !== S.view) { window.scrollTo(0, 0); S.lastView = S.view; }
 }
@@ -285,6 +303,14 @@ function renderHome(v) {
       ]);
     })));
   v.appendChild(dark);
+
+  if (banks().length) {
+    var tot = banks().reduce(function (a, b) { return a + b.balance; }, 0);
+    v.appendChild(el('button', { class: 'bankcard', style: 'display:flex;justify-content:space-between;align-items:center;margin-bottom:12px', onclick: function () { go('balance'); } }, [
+      el('span', { style: 'font-size:14px;color:var(--sub)', text: '통장 잔액 합계' }),
+      el('span', { style: 'font-size:17px;font-weight:700', text: won(tot) + '  ›' })
+    ]));
+  }
 
   // 최근 7일
   var end = S.ym === S.data.today.slice(0, 7) ? S.data.today : lastDay(S.ym);
@@ -395,19 +421,30 @@ function field(label, input) {
   input.id = 'f' + (++fid);
   return el('div', { class: 'field' }, [el('label', { for: input.id, class: 'sub', style: 'font-size:14px;white-space:nowrap', text: label }), input]);
 }
+function openMoney(type, acc) {
+  S.edit = null; S.form = null; S.addType = type; S.addAcc = acc || ''; S.back = S.view === 'account' ? 'account' : 'balance';
+  S.view = 'add'; render();
+}
 function renderAdd(v) {
   var st = S.data.settings;
   if (!S.form) {
     var b = S.edit;
-    S.form = b ? { id: b.id, date: b.date, time: b.time, who: b.who, cat: b.cat, pay: b.pay, memo: b.memo, amount: String(b.amount) }
-      : { id: '', date: S.data.today, time: nowTime(), who: S.data.me.name, cat: st.categories[0] || '', pay: st.payments[0] || '', memo: '', amount: '' };
+    S.form = b ? { type: '지출', id: b.id, date: b.date, time: b.time, who: b.who, cat: b.cat, pay: b.pay, memo: b.memo, amount: String(b.amount) }
+      : { type: S.addType || '지출', id: '', date: S.data.today, time: nowTime(), who: S.data.me.name, cat: st.categories[0] || '', pay: st.payments[0] || '', memo: '', amount: '' };
+    S.addType = null;
   }
   var f = S.form;
   v.appendChild(el('div', { class: 'row', style: 'margin-bottom:4px' }, [
-    el('button', { class: 'navbtn', 'aria-label': '닫기', onclick: function () { go(f.id ? 'daily' : 'home'); } }, ['✕']),
-    el('h1', { style: 'font-size:17px', text: f.id ? '내역 수정' : '지출 입력' }),
+    el('button', { class: 'navbtn', 'aria-label': '닫기', onclick: function () { go(f.id ? 'daily' : (f.type === '지출' ? 'home' : (S.back || 'balance'))); } }, ['✕']),
+    el('h1', { style: 'font-size:17px', text: f.id ? '내역 수정' : '입력' }),
     el('div', { style: 'width:40px' })
   ]));
+  if (!f.id) {
+    v.appendChild(el('div', { class: 'seg', role: 'tablist' }, ['지출', '입금', '이체'].map(function (t) {
+      return el('button', { role: 'tab', class: f.type === t ? 'on' : '', onclick: function () { f.type = t; render(); } }, [t]);
+    })));
+  }
+  if (f.type !== '지출') { renderMoneyForm(v, f); return; }
 
   var amt = el('input', { id: 'amt', inputmode: 'numeric', autocomplete: 'off', placeholder: '0', value: f.amount ? Number(f.amount).toLocaleString('ko-KR') : '',
     style: 'width:220px;border:0;background:none;font-size:38px;font-weight:700;text-align:right;outline:none' });
@@ -434,7 +471,7 @@ function renderAdd(v) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(f.date)) { toast('날짜를 선택해 주세요'); return; }
     var target = f.date.slice(0, 7);
     var payload = { id: f.id, date: f.date, time: f.time, who: f.who, cat: f.cat, pay: f.pay, memo: f.memo, amount: f.amount };
-    var entry = { id: f.id || ('tmp_' + Date.now()), date: f.date, time: f.time, who: f.who, cat: f.cat, pay: f.pay, memo: String(f.memo || '').trim(), amount: Number(f.amount) };
+    var entry = { id: f.id || ('tmp_' + Date.now()), date: f.date, time: f.time, who: f.who, cat: f.cat, pay: f.pay, memo: String(f.memo || '').trim(), amount: Number(f.amount), acc: accOf(f.pay) };
     if (!f.id && target !== S.ym) {
       var c = cacheGet(target);
       if (!c) { // 그 달 데이터가 기기에 없으면 저장 후 불러오기
@@ -443,29 +480,276 @@ function renderAdd(v) {
       }
       S.ym = target; S.data = c;
     }
-    var prev = S.data.entries.slice();
-    if (f.id) S.data.entries = S.data.entries.map(function (x) { return x.id === f.id ? entry : x; });
-    else S.data.entries.push(entry);
+    var prev = snap();
+    if (f.id) {
+      S.data.entries.forEach(function (x) { if (x.id === f.id && x.acc) adj(x.acc, x.amount); });
+      S.data.entries = S.data.entries.map(function (x) { return x.id === f.id ? entry : x; });
+    } else S.data.entries.push(entry);
+    if (entry.acc) adj(entry.acc, -entry.amount);
     sortEntries(S.data.entries);
     S.day = null; S.form = null; S.edit = null; S.view = 'daily';
     toast('저장했습니다'); render();
     write('saveEntry', [payload], function (res) {
       if (!f.id && res && res.id) S.data.entries.forEach(function (x) { if (x.id === entry.id) x.id = res.id; });
-    }, function () { S.data.entries = prev; });
+    }, function () { restore(prev); });
   } }, [f.id ? '수정 저장' : '저장하기']));
 
   if (f.id) {
     v.appendChild(el('button', { class: 'btn del', onclick: function () {
       if (!confirm('이 내역을 삭제할까요?')) return;
-      var prev = S.data.entries.slice(), id = f.id;
+      var prev = snap(), id = f.id;
+      S.data.entries.forEach(function (x) { if (x.id === id && x.acc) adj(x.acc, x.amount); });
       S.data.entries = S.data.entries.filter(function (x) { return x.id !== id; });
       S.form = null; S.edit = null; S.view = 'daily'; toast('삭제했습니다'); render();
-      write('deleteEntry', [id], null, function () { S.data.entries = prev; });
+      write('deleteEntry', [id], null, function () { restore(prev); });
     } }, ['삭제']));
   }
 }
 
+/* ---------- 입금 · 이체 입력 ---------- */
+function amountInput(f, color) {
+  var amt = el('input', { id: 'amt', inputmode: 'numeric', autocomplete: 'off', placeholder: '0', value: f.amount ? Number(f.amount).toLocaleString('ko-KR') : '',
+    style: 'width:220px;border:0;background:none;font-size:38px;font-weight:700;text-align:right;outline:none;color:' + (color || 'var(--ink)') });
+  amt.addEventListener('input', function () {
+    var d = amt.value.replace(/[^0-9]/g, '').slice(0, 10);
+    f.amount = d; amt.value = d ? Number(d).toLocaleString('ko-KR') : '';
+  });
+  return amt;
+}
+function renderMoneyForm(v, f) {
+  var st = S.data.settings, names = banks().map(function (b) { return b.name; });
+  if (!names.length) {
+    v.appendChild(el('div', { class: 'card empty' }, ['먼저 [설정]에서 통장을 추가해 주세요.']));
+    v.appendChild(el('button', { class: 'btn', onclick: function () { go('settings'); } }, ['설정으로 가기']));
+    return;
+  }
+  if (names.indexOf(f.acc) < 0) f.acc = (S.addAcc && names.indexOf(S.addAcc) >= 0) ? S.addAcc : names[0];
+  if (!f.kind || (st.kinds || []).indexOf(f.kind) < 0) f.kind = (st.kinds || [])[0] || '';
+  var toOpts = names.filter(function (n) { return n !== f.acc; }).concat([CARD_PAY]);
+  if (toOpts.indexOf(f.to) < 0) f.to = toOpts[0];
+  var inc = f.type === '입금';
+  var amt = amountInput(f, inc ? '#1D4ED8' : null);
+  v.appendChild(el('div', { style: 'text-align:center;padding:4px 0 18px' }, [
+    el('label', { for: 'amt', class: 'sub', text: inc ? '입금 금액' : '이체 금액' }),
+    el('div', { style: 'display:flex;justify-content:center;align-items:baseline;gap:4px' }, [amt, el('span', { style: 'font-size:22px;font-weight:700', text: '원' })])
+  ]));
+  if (inc) {
+    v.appendChild(chipGroup('들어온 통장', names, 'acc'));
+    v.appendChild(chipGroup('입금 구분', st.kinds || [], 'kind'));
+  } else {
+    v.appendChild(chipGroup('보내는 통장', names, 'acc'));
+    v.appendChild(chipGroup('받는 곳', toOpts, 'to', '신용카드 결제일엔 「카드대금 납부」'));
+  }
+  v.appendChild(chipGroup('누가', st.names, 'who'));
+  var di = el('input', { type: 'date', value: f.date }); di.addEventListener('change', function () { f.date = di.value; });
+  var ti = el('input', { type: 'time', value: f.time }); ti.addEventListener('change', function () { f.time = ti.value; });
+  var mi = el('input', { type: 'text', maxlength: '100', placeholder: inc ? '예: 11월 급여' : '예: 생활비 이체', value: f.memo || '' }); mi.addEventListener('input', function () { f.memo = mi.value; });
+  v.appendChild(el('div', { class: 'card', style: 'padding:2px 16px' }, [field('날짜', di), field('시간', ti), field('메모', mi)]));
+  v.appendChild(el('button', { class: 'btn', style: inc ? 'background:#1D4ED8' : '', onclick: function () {
+    if (!(Number(f.amount) > 0)) { toast('금액을 입력해 주세요'); return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(f.date)) { toast('날짜를 선택해 주세요'); return; }
+    var m = { id: 'tmp_' + Date.now(), date: f.date, time: f.time, type: f.type, who: f.who, acc: f.acc, to: inc ? '' : f.to, kind: inc ? f.kind : '', memo: String(f.memo || '').trim(), amount: Number(f.amount) };
+    var prev = snap();
+    money().push(m); sortEntries(S.data.money);
+    if (inc) adj(m.acc, m.amount); else { adj(m.acc, -m.amount); adj(m.to, m.amount); }
+    var back = S.back || 'balance';
+    S.form = null; S.view = back === 'account' ? 'account' : 'balance'; if (back === 'account') S.acc = m.acc;
+    toast(inc ? '입금을 저장했습니다' : '이체를 저장했습니다'); render();
+    write('saveMoney', [{ type: m.type, date: m.date, time: m.time, who: m.who, acc: m.acc, to: m.to, kind: m.kind, memo: m.memo, amount: m.amount }], function (res) {
+      if (res && res.id) money().forEach(function (x) { if (x.id === m.id) x.id = res.id; });
+    }, function () { restore(prev); });
+  } }, [inc ? '입금 저장' : '이체 저장']));
+}
+
+/* ---------- 잔액 ---------- */
+function bankStats(name) {
+  var r = { inc: 0, out: 0, tin: 0, tout: 0 };
+  monthMoney().forEach(function (m) {
+    if (m.type === '입금' && m.acc === name) r.inc += m.amount;
+    if (m.type === '이체' && m.acc === name) r.tout += m.amount;
+    if (m.type === '이체' && m.to === name) r.tin += m.amount;
+  });
+  monthEntries().forEach(function (e) { if (e.acc === name) r.out += e.amount; });
+  return r;
+}
+function lastText(b) {
+  if (!b.last) return '아직 잔액 확인 안 함';
+  var d = b.last.date === S.data.today ? '오늘' : (+b.last.date.slice(5, 7)) + '/' + (+b.last.date.slice(8, 10));
+  return d + ' ' + b.last.who + ' 확인';
+}
+function renderBalance(v) {
+  var list = banks(), m = +S.ym.slice(5, 7);
+  v.appendChild(el('div', { class: 'row', style: 'margin:8px 4px 14px' }, [el('h1', { text: '잔액' }), el('span', { class: 'sub', text: m + '월 입출금 기준' })]));
+  if (!list.length) {
+    v.appendChild(el('div', { class: 'card empty' }, ['아직 등록된 통장이 없습니다. [설정]에서 통장을 추가해 주세요.']));
+    v.appendChild(el('button', { class: 'btn', onclick: function () { go('settings'); } }, ['설정으로 가기']));
+    return;
+  }
+  var total = 0, inc = 0, out = 0;
+  list.forEach(function (b) { total += b.balance; var st = bankStats(b.name); inc += st.inc; out += st.out; });
+  monthMoney().forEach(function (x) { if (x.type === '이체' && x.to === CARD_PAY && bank(x.acc)) out += x.amount; });
+  v.appendChild(el('div', { class: 'card dark' }, [
+    el('div', { style: 'font-size:13px;color:#C9C9CE', text: '통장 잔액 합계' }),
+    el('div', { style: 'font-size:30px;font-weight:700;margin:6px 0 12px', text: won(total) }),
+    el('div', { style: 'display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px' }, [
+      el('div', { style: 'background:#2A2A2E;border-radius:12px;padding:10px 12px' }, [el('div', { style: 'font-size:12px;color:#C9C9CE', text: m + '월 입금' }), el('div', { style: 'font-size:16px;font-weight:700;color:#93C5FD', text: '+' + won(inc) })]),
+      el('div', { style: 'background:#2A2A2E;border-radius:12px;padding:10px 12px' }, [el('div', { style: 'font-size:12px;color:#C9C9CE', text: m + '월 출금' }), el('div', { style: 'font-size:16px;font-weight:700', text: '−' + won(out) })])
+    ]),
+    el('div', { style: 'font-size:11px;color:#9A9AA0;margin-top:8px', text: '통장끼리 옮긴 돈(이체)은 입금·출금에 넣지 않습니다.' })
+  ]));
+  v.appendChild(el('div', { style: 'display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:14px' }, [
+    el('button', { class: 'btn2 pri', onclick: function () { openMoney('입금'); } }, ['+ 입금 기록']),
+    el('button', { class: 'btn2', onclick: function () { openMoney('이체'); } }, ['이체 · 카드대금'])
+  ]));
+  list.forEach(function (b) {
+    var st = bankStats(b.name), parts = [];
+    if (st.inc) parts.push('입금 +' + st.inc.toLocaleString('ko-KR'));
+    if (st.tin) parts.push('이체 +' + st.tin.toLocaleString('ko-KR'));
+    if (st.out) parts.push('출금 −' + st.out.toLocaleString('ko-KR'));
+    if (st.tout) parts.push('이체 −' + st.tout.toLocaleString('ko-KR'));
+    v.appendChild(el('button', { class: 'bankcard', onclick: function () { S.acc = b.name; S.adjOpen = false; S.view = 'account'; render(); } }, [
+      el('div', { class: 'row' }, [el('b', { style: 'font-size:15px', text: b.name }), el('span', { style: 'font-size:18px;font-weight:700', text: won(b.balance) })]),
+      el('div', { class: 'row sub', style: 'font-size:12px;margin-top:6px' }, [el('span', { text: parts.join(' · ') || '이번 달 움직임 없음' }), el('span', { text: lastText(b) })])
+    ]));
+  });
+  v.appendChild(el('div', { class: 'sub', style: 'font-size:12px;margin:6px 4px', text: '앱 잔액이 실제와 다르면 통장을 눌러 [잔액 맞추기]를 해 주세요.' }));
+}
+
+function moneyItem(m, name) {
+  var label, sub, amt, color = 'var(--ink)';
+  if (m.type === '입금') { label = m.memo || m.kind || '입금'; sub = '입금 · ' + [m.kind, m.who].filter(Boolean).join(' · '); amt = m.amount; color = '#1D4ED8'; }
+  else if (m.type === '이체') {
+    if (m.acc === name) { label = m.memo || (m.to === CARD_PAY ? CARD_PAY : '이체'); sub = (m.to === CARD_PAY ? '출금' : '이체 · ' + m.to + '(으)로') + ' · ' + m.who; amt = -m.amount; }
+    else { label = m.memo || '이체'; sub = '이체 · ' + m.acc + '에서 · ' + m.who; amt = m.amount; color = '#1D4ED8'; }
+  } else { label = '잔액 맞추기'; sub = [m.memo, m.who].filter(Boolean).join(' · '); amt = m.amount; color = '#4A4A4F'; }
+  return { date: m.date, time: m.time, label: label, sub: sub, amt: amt, color: color, ic: m.type === '맞춤' ? '맞' : m.type.slice(0, 1), money: m };
+}
+function renderAccount(v) {
+  var b = bank(S.acc);
+  if (!b) { S.view = 'balance'; renderBalance(v); return; }
+  v.appendChild(el('div', { class: 'row', style: 'justify-content:flex-start;gap:4px;margin-bottom:6px' }, [
+    el('button', { class: 'navbtn', 'aria-label': '뒤로', onclick: function () { go('balance'); } }, ['‹']),
+    el('h1', { style: 'font-size:18px', text: b.name })
+  ]));
+  var card = el('div', { class: 'card' }, [
+    el('div', { class: 'sub', text: '현재 잔액' }),
+    el('div', { style: 'font-size:30px;font-weight:700;margin:4px 0', text: won(b.balance) }),
+    el('div', { class: 'sub', style: 'font-size:12px', text: (b.link.length ? '연결: ' + b.link.join(', ') : '연결된 결제수단 없음') + ' · ' + lastText(b) }),
+    el('div', { style: 'display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px' }, [
+      el('button', { class: 'btn2 pri', onclick: function () { openMoney('입금', b.name); } }, ['+ 입금']),
+      el('button', { class: 'btn2', onclick: function () { S.adjOpen = !S.adjOpen; render(); } }, ['잔액 맞추기'])
+    ])
+  ]);
+  v.appendChild(card);
+  if (S.adjOpen) {
+    var diff = el('b', { style: 'color:#C2410C', text: '' });
+    var ri = el('input', { inputmode: 'numeric', autocomplete: 'off', placeholder: '은행 앱에서 본 잔액', class: 'txt', style: 'font-size:17px;font-weight:700;text-align:right' });
+    var real = '';
+    ri.addEventListener('input', function () {
+      real = ri.value.replace(/[^0-9]/g, '').slice(0, 12);
+      ri.value = real ? Number(real).toLocaleString('ko-KR') : '';
+      diff.textContent = real === '' ? '' : signWon(Number(real) - b.balance);
+    });
+    ri.id = 'real';
+    v.appendChild(el('div', { class: 'card', style: 'border:2px solid var(--acc)' }, [
+      el('b', { style: 'font-size:14px', text: '실제 통장 잔액을 입력하세요' }),
+      el('div', { class: 'sub', style: 'font-size:12px;margin:6px 0 10px;line-height:1.5', text: '차이만큼 「잔액 맞추기」로 기록됩니다. 지출 합계에는 들어가지 않습니다.' }),
+      el('div', { style: 'display:flex;align-items:center;gap:8px' }, [el('label', { for: 'real', class: 'sub', style: 'white-space:nowrap', text: '실제 잔액' }), ri, el('b', { text: '원' })]),
+      el('div', { class: 'row', style: 'font-size:13px;margin:10px 0' }, [el('span', { class: 'sub', text: '앱 잔액과 차이' }), diff]),
+      el('button', { class: 'btn', onclick: function () {
+        if (real === '') { toast('실제 잔액을 입력해 주세요'); return; }
+        var r = Number(real), delta = r - b.balance, prev = snap();
+        var m = { id: 'tmp_' + Date.now(), date: S.data.today, time: nowTime(), type: '맞춤', who: S.data.me.name, acc: b.name, to: '', kind: '', memo: '실제 잔액 ' + won(r), amount: delta };
+        money().push(m); sortEntries(S.data.money);
+        b.balance = r; b.last = { date: S.data.today, who: S.data.me.name };
+        S.adjOpen = false; toast('잔액을 맞췄습니다'); render();
+        write('saveMoney', [{ type: '맞춤', date: m.date, time: m.time, who: m.who, acc: m.acc, real: r }], function (res) {
+          if (res) money().forEach(function (x) { if (x.id === m.id) { x.id = res.id; x.amount = res.amount; } });
+        }, function () { restore(prev); });
+      } }, ['이 잔액으로 맞추기'])
+    ]));
+  }
+  var items = [];
+  monthMoney().forEach(function (m) { if (m.acc === b.name || m.to === b.name) items.push(moneyItem(m, b.name)); });
+  monthEntries().forEach(function (e) {
+    if (e.acc === b.name) items.push({ date: e.date, time: e.time, label: e.memo || e.cat, sub: '지출 · ' + [e.pay, e.who].filter(Boolean).join(' · '), amt: -e.amount, color: 'var(--ink)', ic: (e.cat || '지').slice(0, 1), entry: e });
+  });
+  items.sort(function (x, y) { return x.date === y.date ? (x.time < y.time ? 1 : -1) : (x.date < y.date ? 1 : -1); });
+  v.appendChild(el('div', { class: 'row', style: 'margin:8px 4px 0' }, [el('h2', { style: 'margin:0', text: (+S.ym.slice(5, 7)) + '월 입출금 내역' }), el('span', { class: 'sub', style: 'font-size:12px', text: '누르면 수정·삭제' })]));
+  if (!items.length) { v.appendChild(el('div', { class: 'empty', text: '이번 달 기록이 없습니다' })); return; }
+  var groups = {};
+  items.forEach(function (it) { (groups[it.date] = groups[it.date] || []).push(it); });
+  Object.keys(groups).sort().reverse().forEach(function (ds) {
+    var net = groups[ds].reduce(function (a, it) { return a + it.amt; }, 0);
+    v.appendChild(el('div', { class: 'row', style: 'margin:14px 4px 8px;font-size:13px' }, [el('b', { text: fmtDay(ds) }), el('span', { class: 'sub', text: signWon(net) })]));
+    v.appendChild(el('div', { class: 'card', style: 'padding:2px 14px' }, groups[ds].map(function (it) {
+      return el('button', { class: 'item', onclick: function () {
+        if (it.entry) { if (String(it.entry.id).indexOf('tmp_') === 0) { toast('저장 중입니다. 잠시 후 다시 눌러 주세요'); return; } S.edit = it.entry; S.form = null; S.view = 'add'; render(); return; }
+        var m = it.money;
+        if (String(m.id).indexOf('tmp_') === 0) { toast('저장 중입니다. 잠시 후 다시 눌러 주세요'); return; }
+        if (!confirm('이 기록을 삭제할까요?\n(입금·이체는 삭제 후 다시 입력하면 됩니다)')) return;
+        var prev = snap();
+        S.data.money = money().filter(function (x) { return x.id !== m.id; });
+        if (m.type === '입금' || m.type === '맞춤') adj(m.acc, -m.amount); else { adj(m.acc, m.amount); adj(m.to, -m.amount); }
+        toast('삭제했습니다'); render();
+        write('deleteMoney', [m.id], null, function () { restore(prev); });
+      } }, [
+        el('div', { class: 'ic', style: it.color === '#1D4ED8' ? 'background:#DBEAFE;color:#1D4ED8' : '', text: it.ic }),
+        el('div', { style: 'flex:1;min-width:0' }, [
+          el('div', { style: 'font-size:15px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis', text: it.label }),
+          el('div', { class: 'sub', style: 'font-size:12px', text: it.sub })
+        ]),
+        el('span', { style: 'font-size:15px;font-weight:700;white-space:nowrap;color:' + it.color, text: signWon(it.amt) })
+      ]);
+    })));
+  });
+}
+
 /* ---------- 설정 ---------- */
+function bankEditor() {
+  var sf = S.sform;
+  var inp = el('input', { type: 'text', maxlength: '20', placeholder: '통장 추가 (예: 카카오뱅크 생활비)', class: 'txt', 'aria-label': '통장 추가' });
+  function add() {
+    var x = inp.value.trim();
+    if (!x) return;
+    if (x === CARD_PAY || sf.banks.some(function (b) { return b.name === x; })) { toast('이미 있거나 쓸 수 없는 이름입니다'); return; }
+    sf.banks.push({ name: x, link: [] }); S.bankEdit = x; render();
+  }
+  inp.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') add(); });
+  var rows = sf.banks.map(function (b, i) {
+    var row = el('div', { style: 'background:#F6F5F1;border-radius:12px;padding:10px 12px;margin-bottom:8px' }, [
+      el('div', { class: 'row' }, [
+        el('div', { style: 'min-width:0' }, [
+          el('b', { style: 'font-size:14px', text: b.name }),
+          el('div', { class: 'sub', style: 'font-size:12px', text: b.link.length ? '연결: ' + b.link.join(', ') : '연결된 결제수단 없음 (입금·이체만)' })
+        ]),
+        el('div', { style: 'display:flex;gap:6px;flex-shrink:0' }, [
+          el('button', { class: 'chip', style: 'min-height:36px', onclick: function () { S.bankEdit = S.bankEdit === b.name ? null : b.name; render(); } }, [S.bankEdit === b.name ? '닫기' : '연결']),
+          el('button', { class: 'chip', style: 'min-height:36px', 'aria-label': b.name + ' 삭제', onclick: function () {
+            if (!confirm('「' + b.name + '」 통장을 목록에서 뺄까요?\n잔액 화면에서 사라지고, 기록은 구글시트에 남습니다.')) return;
+            sf.banks.splice(i, 1); render();
+          } }, ['✕'])
+        ])
+      ])
+    ]);
+    if (S.bankEdit === b.name) {
+      row.appendChild(el('div', { class: 'sub', style: 'font-size:12px;margin:10px 0 6px', text: '이 결제수단으로 쓴 지출은 이 통장 잔액에서 자동으로 빠집니다. 신용카드는 연결하지 마세요.' }));
+      row.appendChild(el('div', { style: 'display:flex;flex-wrap:wrap;gap:6px' }, sf.payments.map(function (p) {
+        var on = b.link.indexOf(p) >= 0;
+        return el('button', { class: 'chip' + (on ? ' on' : ''), style: 'min-height:38px', onclick: function () {
+          if (on) b.link = b.link.filter(function (x) { return x !== p; });
+          else { sf.banks.forEach(function (o) { o.link = o.link.filter(function (x) { return x !== p; }); }); b.link.push(p); }
+          render();
+        } }, [p]);
+      })));
+    }
+    return row;
+  });
+  return el('div', { class: 'card' }, [el('h2', { text: '통장' })].concat(rows).concat([
+    el('div', { style: 'display:flex;gap:8px;margin-top:6px' }, [inp, el('button', { class: 'chip on', onclick: add }, ['추가'])])
+  ]));
+}
+
 function listEditor(title, key, owner) {
   var sf = S.sform;
   var inp = el('input', { type: 'text', maxlength: '20', placeholder: title + ' 추가', class: 'txt', 'aria-label': title + ' 추가' });
@@ -489,13 +773,16 @@ function listEditor(title, key, owner) {
 }
 function renderSettings(v) {
   var st = S.data.settings, owner = true; // 두 사람 모두 설정 변경 가능
-  if (!S.sform) S.sform = { payments: st.payments.slice(), categories: st.categories.slice(), budget: String(st.budget || '') };
+  if (!S.sform) S.sform = { payments: st.payments.slice(), categories: st.categories.slice(), budget: String(st.budget || ''),
+    banks: banks().map(function (b) { return { name: b.name, link: b.link.slice() }; }), kinds: (st.kinds || []).slice() };
   var sf = S.sform;
   v.appendChild(el('h1', { text: '설정', style: 'margin:8px 0 14px' }));
   if (!owner) v.appendChild(el('div', { class: 'card sub', text: '설정 변경은 ' + st.ownerName + '님만 할 수 있습니다.' }));
 
   v.appendChild(listEditor('결제수단', 'payments', owner));
   v.appendChild(listEditor('카테고리', 'categories', owner));
+  v.appendChild(bankEditor());
+  v.appendChild(listEditor('입금 구분', 'kinds', owner));
 
   var bi = el('input', { inputmode: 'numeric', autocomplete: 'off', placeholder: '0', value: sf.budget ? Number(sf.budget).toLocaleString('ko-KR') : '' });
   if (!owner) bi.disabled = true;
@@ -508,18 +795,24 @@ function renderSettings(v) {
   if (owner) {
     v.appendChild(el('button', { class: 'btn', style: 'margin-bottom:12px', onclick: function () {
       if (!sf.payments.length || !sf.categories.length) { toast('결제수단과 카테고리는 최소 1개씩 있어야 합니다'); return; }
-      var prev = S.data.settings, ns = {};
-      for (var k in prev) ns[k] = prev[k];
-      ns.payments = sf.payments.slice(); ns.categories = sf.categories.slice(); ns.budget = Number(sf.budget) || 0;
-      S.data.settings = ns; S.sform = null; toast('설정을 저장했습니다'); render();
-      write('saveSettings', [{ payments: ns.payments, categories: ns.categories, budget: ns.budget }], null, function () { S.data.settings = prev; });
+      if (!sf.kinds.length) { toast('입금 구분은 최소 1개 있어야 합니다'); return; }
+      var prev = snap(), ns = {};
+      for (var k in S.data.settings) ns[k] = S.data.settings[k];
+      ns.payments = sf.payments.slice(); ns.categories = sf.categories.slice(); ns.budget = Number(sf.budget) || 0; ns.kinds = sf.kinds.slice();
+      var nb = sf.banks.map(function (b) {
+        var old = bank(b.name);
+        return { name: b.name, link: b.link.filter(function (p) { return ns.payments.indexOf(p) >= 0; }), balance: old ? old.balance : 0, last: old ? old.last : null };
+      });
+      S.data.settings = ns; S.data.banks = nb; S.sform = null; S.bankEdit = null; toast('설정을 저장했습니다'); render();
+      write('saveSettings', [{ payments: ns.payments, categories: ns.categories, budget: ns.budget, kinds: ns.kinds,
+        banks: nb.map(function (b) { return { name: b.name, link: b.link }; }) }], null, function () { restore(prev); });
     } }, ['설정 저장']));
   }
 
   v.appendChild(el('div', { class: 'card' }, [
     el('h2', { text: '사용하는 사람' }),
     el('div', { style: 'font-size:14px', text: st.names.join(', ') + '  (지금: ' + S.data.me.name + ')' }),
-    el('div', { class: 'sub', style: 'font-size:12px;margin-top:8px', text: '사람 추가·비밀번호 변경과 항목 순서는 구글시트 [설정] 탭에서 바꿀 수 있습니다.' })
+    el('div', { class: 'sub', style: 'font-size:12px;margin-top:8px', text: '사람 추가·비밀번호 변경과 항목 순서는 구글시트 [설정] 탭에서 바꿀 수 있습니다. 결제수단 이름을 바꾸면 통장 연결도 다시 해 주세요.' })
   ]));
   v.appendChild(el('button', { class: 'btn del', onclick: function () {
     if (!confirm('이 기기에서 로그아웃할까요?')) return;
