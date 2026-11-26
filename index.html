@@ -488,7 +488,7 @@ function listEditor(title, key, owner) {
   ]);
 }
 function renderSettings(v) {
-  var st = S.data.settings, owner = S.data.me.isOwner;
+  var st = S.data.settings, owner = true; // 두 사람 모두 설정 변경 가능
   if (!S.sform) S.sform = { payments: st.payments.slice(), categories: st.categories.slice(), budget: String(st.budget || '') };
   var sf = S.sform;
   v.appendChild(el('h1', { text: '설정', style: 'margin:8px 0 14px' }));
